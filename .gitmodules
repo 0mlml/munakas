@@ -1,0 +1,3 @@
+[submodule "ui/static/cs2-radar-images"]
+	path = ui/static/cs2-radar-images
+	url = https://github.com/2mlml/cs2-radar-images
