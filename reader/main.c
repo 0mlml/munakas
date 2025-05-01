@@ -11,10 +11,11 @@ void jsonify_player(const struct Player *player, char *json, size_t size)
   snprintf(
       json, size,
       "{ \"name\": \"%s\", \"health\": %d, \"armor\": %d, \"money\": %d, "
+      "\"freezetime_end_equipment_value\": %d, "
       "\"team\": %d, \"life_state\": %d, \"weapon\": \"%s\", "
       "\"color\": %d, \"position\": {\"x\": %.2f, \"y\": %.2f, \"z\": %.2f}, "
       "\"active_player\": %s }",
-      player->name, player->health, player->armor, player->money, player->team,
+      player->name, player->health, player->armor, player->money, player->freezetime_end_equipment_value, player->team,
       player->life_state, player->weapon, player->color, player->position.x,
       player->position.y, player->position.z,
       player->active_player ? "true" : "false");

@@ -15,7 +15,8 @@
 
 #define ELF_DYNAMIC_SECTION_PHT_TYPE 0x02
 
-typedef struct ProcessHandle {
+typedef struct ProcessHandle
+{
   pid_t pid;
   int memory;
 } ProcessHandle;
