@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CS2 Spectator UI</title>
+    <title>Munakas</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/babel-standalone/babel.min.js"></script>
@@ -154,7 +154,7 @@
 
                     ctx.fill();
 
-                    if (player.active_player) {
+                    if (selectedPlayer && player.name === selectedPlayer.name) {
                         ctx.strokeStyle = 'white';
                         ctx.lineWidth = 2;
                         ctx.stroke();
@@ -401,8 +401,6 @@
             return (
                 <div className="flex flex-col h-screen p-4 bg-gray-900 text-white overflow-hidden">
                     <div className="flex justify-between items-center mb-2">
-                        <h1 className="text-2xl font-bold">CS2 Live Spectator</h1>
-
                         <div className="flex items-center">
                             <div className="flex items-center mr-4">
                                 <div className={`w-3 h-3 rounded-full mr-2 ${connectionStatus === 'connected' ? 'bg-green-500' :
@@ -429,7 +427,9 @@
                                     ))}
                                 </select>
                             </div>
+
                         </div>
+                        <a href="https://github.com/0mlml/munakas">GitHub</a>
                     </div>
 
                     <div className="flex flex-row h-full gap-4">

@@ -10,7 +10,7 @@ fi
 cd reader
 make
 
-if [ $? -ne 0 ] || [ ! -f cs2radar.out ]; then
+if [ $? -ne 0 ] || [ ! -f reader.out ]; then
     echo "Failed to build reader"
     exit 1
 fi
@@ -27,7 +27,7 @@ fi
 cd ui
 go build -o ui.out .
 
-if [ $? -ne 0 ] || [ ! -f ui ]; then
+if [ $? -ne 0 ] || [ ! -f ui.out ]; then
     echo "Failed to build ui"
     exit 1
 fi

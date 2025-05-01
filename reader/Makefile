@@ -4,7 +4,7 @@ CFLAGS = -Wall -Wextra -g
 
 SOURCES = $(wildcard *.c)
 OBJECTS = $(SOURCES:.c=.o)
-TARGET = cs2radar.out
+TARGET = reader.out
 
 all: $(TARGET)
 
