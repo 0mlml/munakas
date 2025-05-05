@@ -27,7 +27,8 @@
             const [selectedMap, setSelectedMap] = React.useState(null);
             const [availableMaps, setAvailableMaps] = React.useState([]);
             const [mapConfig, setMapConfig] = React.useState(null);
-            const [showLowerLevel, setShowLowerLevel] = React.useState(false);
+            const [currentSection, setCurrentSection] = React.useState("default");
+            const [availableSections, setAvailableSections] = React.useState([]);
             const [connectionStatus, setConnectionStatus] = React.useState('connecting');
             const [mapImage, setMapImage] = React.useState(null);
             const [mapOnlyMode, setMapOnlyMode] = React.useState(false);
@@ -36,40 +37,64 @@
             const canvasContainerRef = React.useRef(null);
 
             React.useEffect(() => {
-                if (!selectedMap) return;
+                if (!mapConfig || !mapConfig.verticalSections) {
+                    setAvailableSections(["default"]);
+                    setCurrentSection("default");
+                    return;
+                }
 
-                const img = new Image();
-                img.src = `/cs2-radar-images/${selectedMap}${showLowerLevel ? '_lower' : ''}_radar_psd.png`;
-                img.onload = () => {
-                    setMapImage(img);
-                };
-                img.onerror = () => {
-                    const defaultImg = new Image();
-                    defaultImg.src = '/cs2-radar-images/default_png.png';
-                    defaultImg.onload = () => {
-                        setMapImage(defaultImg);
-                    };
-                };
+                const sections = Object.keys(mapConfig.verticalSections);
+                setAvailableSections(sections);
 
-                setShowLowerLevel(false);
-            }, [selectedMap]);
+                if (sections.includes("default")) {
+                    setCurrentSection("default");
+                } else if (sections.length > 0) {
+                    setCurrentSection(sections[0]);
+                }
+            }, [mapConfig]);
 
             React.useEffect(() => {
                 if (!selectedMap) return;
 
                 const img = new Image();
-                img.src = `/cs2-radar-images/${selectedMap}${showLowerLevel ? '_lower' : ''}_radar_psd.png`;
+
+                const sectionSuffix = currentSection !== "default" ? `_${currentSection}` : '';
+                img.src = `/cs2-radar-images/${selectedMap}${sectionSuffix}.png`;
+
                 img.onload = () => {
                     setMapImage(img);
                 };
                 img.onerror = () => {
+                    console.error(`Failed to load image: ${img.src}`);
                     const defaultImg = new Image();
-                    defaultImg.src = '/cs2-radar-images/default_png.png';
+                    defaultImg.src = '/cs2-radar-images/default.png';
                     defaultImg.onload = () => {
                         setMapImage(defaultImg);
                     };
                 };
-            }, [showLowerLevel]);
+            }, [selectedMap, currentSection]);
+
+            React.useEffect(() => {
+                if (!selectedPlayer || !mapConfig || !mapConfig.verticalSections) return;
+
+                const playerZ = selectedPlayer.position.z;
+
+                let newSection = null;
+                let highestMinimum = -Infinity;
+
+                Object.entries(mapConfig.verticalSections).forEach(([sectionName, sectionConfig]) => {
+                    if (playerZ >= sectionConfig.altitudeMin &&
+                        playerZ < sectionConfig.altitudeMax &&
+                        sectionConfig.altitudeMin > highestMinimum) {
+                        newSection = sectionName;
+                        highestMinimum = sectionConfig.altitudeMin;
+                    }
+                });
+
+                if (newSection && newSection !== currentSection) {
+                    setCurrentSection(newSection);
+                }
+            }, [selectedPlayer, mapConfig]);
 
             React.useEffect(() => {
                 if (!canvasRef.current || !mapImage || !mapConfig) return;
@@ -108,17 +133,6 @@
 
                 ctx.save();
 
-                if (selectedPlayer) {
-                    if (mapConfig.verticalSections && mapConfig.verticalSections.lower) {
-                        const lowerThreshold = mapConfig.verticalSections.lower.altitudeMax;
-                        if (selectedPlayer.position.z < lowerThreshold - 10 && !showLowerLevel) {
-                            setShowLowerLevel(true);
-                        } else if (selectedPlayer.position.z > lowerThreshold + 10 && showLowerLevel) {
-                            setShowLowerLevel(false);
-                        }
-                    }
-                }
-
                 if (mapConfig.rotate) {
                     ctx.translate(containerWidth / 2, containerHeight / 2);
 
@@ -142,16 +156,20 @@
                 playerData.forEach(player => {
                     if (player.life_state !== 0) return;
 
+                    const renderTranslucent = mapConfig.verticalSections && mapConfig.verticalSections[currentSection] &&
+                        (player.position.z < mapConfig.verticalSections[currentSection].altitudeMin ||
+                            player.position.z >= mapConfig.verticalSections[currentSection].altitudeMax);
+
                     const position = calculatePlayerCanvasPosition(player, drawX, drawY, drawWidth, drawHeight);
 
                     ctx.beginPath();
-                    ctx.arc(position.x, position.y, 8, 0, 2 * Math.PI);
+                    ctx.arc(position.x, position.y, window.innerWidth < 768 ? 4 : 8, 0, 2 * Math.PI);
 
                     switch (player.team) {
-                        case 2: ctx.fillStyle = '#CA8A04'; break; // Terrorists (yellow-600)
-                        case 3: ctx.fillStyle = '#2563EB'; break; // Counter-Terrorists (blue-600)
-                        default: ctx.fillStyle = '#4B5563'; break; // Spectator (gray-600)
-                    }
+                        case 2: ctx.fillStyle = `rgba(202, 138, 4, ${renderTranslucent ? 0.5 : 1})`; break
+                        case 3: ctx.fillStyle = `rgba(37, 99, 235, ${renderTranslucent ? 0.5 : 1})`; break
+                        default: ctx.fillStyle = `rgba(75, 85, 99, ${renderTranslucent ? 0.5 : 1})`; break
+                    }                    
 
                     ctx.fill();
 
@@ -159,6 +177,21 @@
                         ctx.strokeStyle = 'white';
                         ctx.lineWidth = 2;
                         ctx.stroke();
+
+                        let newSection = null;
+                        let highestMinimum = -Infinity;
+                        if (mapConfig.verticalSections) Object.entries(mapConfig.verticalSections).forEach(([sectionName, sectionConfig]) => {
+                            if (player.position.z >= sectionConfig.altitudeMin &&
+                                player.position.z < sectionConfig.altitudeMax &&
+                                sectionConfig.altitudeMin > highestMinimum) {
+                                newSection = sectionName;
+                                highestMinimum = sectionConfig.altitudeMin;
+                            }
+                        });
+
+                        if (newSection && newSection !== currentSection) {
+                            setCurrentSection(newSection);
+                        }
                     }
 
                     ctx.font = '12px Arial';
@@ -167,7 +200,7 @@
                     ctx.fillText(player.name, position.x, position.y + 20);
                 });
 
-            }, [playerData, mapImage, mapConfig, canvasRef.current]);
+            }, [playerData, mapImage, mapConfig, currentSection, canvasRef.current]);
 
             React.useEffect(() => {
                 const handleResize = () => {
@@ -333,6 +366,13 @@
                 playerData.forEach(player => {
                     if (player.life_state !== 0) return;
 
+                    if (mapConfig.verticalSections) {
+                        const section = mapConfig.verticalSections[currentSection];
+                        if (section && (player.position.z < section.altitudeMin || player.position.z >= section.altitudeMax)) {
+                            return;
+                        }
+                    }
+
                     const container = canvasContainerRef.current;
                     if (!container) return;
 
@@ -380,11 +420,13 @@
                 setSelectedMap(e.target.value);
             };
 
+            const handleSectionChange = (e) => {
+                setCurrentSection(e.target.value);
+            };
+
             const toggleMapOnlyMode = () => {
                 setMapOnlyMode(!mapOnlyMode);
             };
-
-            const hasLowerLevel = mapConfig && mapConfig.verticalSections && mapConfig.verticalSections.lower !== undefined;
 
             const getTeamName = (teamId) => {
                 switch (teamId) {
@@ -436,7 +478,7 @@
                                 </select>
                             </div>
 
-                            <button 
+                            <button
                                 className={`py-1 px-3 rounded mr-2 ${mapOnlyMode ? 'bg-blue-600' : 'bg-gray-800'}`}
                                 onClick={toggleMapOnlyMode}
                             >
@@ -449,7 +491,10 @@
 
                     <div className="flex flex-row h-full gap-4">
                         <div className={`${mapOnlyMode ? 'w-full' : 'w-2/3'} bg-gray-800 rounded-lg p-4 flex flex-col`}>
-                            <h2 className="text-xl font-semibold mb-2">Map</h2>
+                            {!mapOnlyMode && (<h2 className="text-xl font-semibold mb-2">
+                                Map - {selectedMap && mapConfig ? mapConfig.name : ""}
+                                {availableSections.length > 1 && ` (${currentSection.charAt(0).toUpperCase() + currentSection.slice(1)} Level)`}
+                            </h2>)}
                             <div ref={canvasContainerRef} className="relative flex-grow bg-gray-700 rounded overflow-hidden">
                                 <canvas
                                     ref={canvasRef}
@@ -487,85 +532,94 @@
                                         <div>
                                             <span className="text-gray-400">Y:</span> {selectedPlayer.position.y.toFixed(0)}
                                         </div>
+                                        <div>
+                                            <span className="text-gray-400">Z:</span> {selectedPlayer.position.z.toFixed(0)}
+                                        </div>
                                     </div>
                                 </div>
                             ) :
                                 !mapOnlyMode && (
-                                <div className="bg-gray-700 rounded-lg p-2 mt-4">
-                                    <div className="grid grid-cols-3 gap-2 text-sm">
-                                        <h3 className="font-semibold mb-1 flex items-center">
-                                            <span className="w-2 h-2 rounded-full bg-yellow-600 mr-2"></span>
-                                            {playerData.filter(player => player.team === 2 && player.life_state === 0).length} Terrorists
-                                        </h3>
-                                        <h4>vs</h4>
-                                        <h3 className="font-semibold mb-1 flex items-center">
-                                            <span className="w-2 h-2 rounded-full bg-blue-600 mr-2"></span>
-                                            {playerData.filter(player => player.team === 3 && player.life_state === 0).length} Counter-Terrorists
-                                        </h3>
-                                    </div>
+                                    <div className="bg-gray-700 rounded-lg p-2 mt-4">
+                                        <div className="grid grid-cols-3 gap-2 text-sm">
+                                            <h3 className="font-semibold mb-1 flex items-center">
+                                                <span className="w-2 h-2 rounded-full bg-yellow-600 mr-2"></span>
+                                                {playerData.filter(player => player.team === 2 && player.life_state === 0).length} Terrorists
+                                            </h3>
+                                            <h4>vs</h4>
+                                            <h3 className="font-semibold mb-1 flex items-center">
+                                                <span className="w-2 h-2 rounded-full bg-blue-600 mr-2"></span>
+                                                {playerData.filter(player => player.team === 3 && player.life_state === 0).length} Counter-Terrorists
+                                            </h3>
+                                        </div>
 
-                                    <div className="grid grid-cols-3 gap-2 text-sm">
-                                        <div>
-                                            <span className="text-yellow-600">T Unfreeze EQP value:</span> {playerData.map(p => p.team === 2 ? p.freezetime_end_equipment_value : 0).reduce((p, c) => p + c, 0)}
-                                        </div><p></p>
-                                        <div>
-                                            <span className="text-blue-600">CT Unfreeze EQP value:</span> {playerData.map(p => p.team === 3 ? p.freezetime_end_equipment_value : 0).reduce((p, c) => p + c, 0)}
+                                        <div className="grid grid-cols-3 gap-2 text-sm">
+                                            <div>
+                                                <span className="text-yellow-600">T Unfreeze EQP value:</span> {playerData.map(p => p.team === 2 ? p.freezetime_end_equipment_value : 0).reduce((p, c) => p + c, 0)}
+                                            </div><p></p>
+                                            <div>
+                                                <span className="text-blue-600">CT Unfreeze EQP value:</span> {playerData.map(p => p.team === 3 ? p.freezetime_end_equipment_value : 0).reduce((p, c) => p + c, 0)}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
                         </div>
 
                         {!mapOnlyMode && (
-                        <div className="w-1/3 bg-gray-800 rounded-lg p-4 overflow-y-auto">
-                            <h2 className="text-xl font-semibold mb-2">Players</h2>
-                            <div className="space-y-2">
-                                {playerData.map(player => (
-                                    <div
-                                        key={player.name}
-                                        className={`relative p-2 rounded-md cursor-pointer ${selectedPlayer && player.name === selectedPlayer.name ? 'ring-2 ring-white' : ''} ${getTeamColor(player.team)}`}
-                                        onClick={() => handlePlayerClick(player)}
-                                    >
-                                        <div className="flex justify-between items-center">
-                                            <div className="font-bold flex items-center">
-                                                {player.active_player && <span className="mr-1">👁️</span>}
-                                                {player.name}
-                                            </div>
-                                            <div className="text-sm">
-                                                ${player.money}
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center mt-1">
-                                            <div className="w-20 bg-gray-700 h-3 rounded-sm mr-2">
-                                                <div
-                                                    className={`h-3 rounded-sm ${player.health > 60 ? 'bg-green-500' :
-                                                        player.health > 20 ? 'bg-yellow-500' : 'bg-red-500'
-                                                        }`}
-                                                    style={{ width: `${player.health}%` }}
-                                                />
+                            <div className="w-1/3 bg-gray-800 rounded-lg p-4 overflow-y-auto">
+                                <h2 className="text-xl font-semibold mb-2">Players</h2>
+                                <div className="space-y-2">
+                                    {playerData.map(player => (
+                                        <div
+                                            key={player.name}
+                                            className={`relative p-2 rounded-md cursor-pointer ${selectedPlayer && player.name === selectedPlayer.name ? 'ring-2 ring-white' : ''} ${getTeamColor(player.team)}`}
+                                            onClick={() => handlePlayerClick(player)}
+                                        >
+                                            <div className="flex justify-between items-center">
+                                                <div className="font-bold flex items-center">
+                                                    {player.active_player && <span className="mr-1">👁️</span>}
+                                                    {player.name}
+                                                    {!(!mapConfig.verticalSections ||
+                                                        !mapConfig.verticalSections[currentSection] ||
+                                                        (player.position.z >= mapConfig.verticalSections[currentSection].altitudeMin &&
+                                                            player.position.z < mapConfig.verticalSections[currentSection].altitudeMax)) && player.life_state === 0 &&
+                                                        <span className="ml-1 text-xs">(different level)</span>
+                                                    }
+                                                </div>
+                                                <div className="text-sm">
+                                                    ${player.money}
+                                                </div>
                                             </div>
 
-                                            {player.armor > 0 && (
-                                                <div className="w-5 h-5 bg-gray-300 rounded-full flex items-center justify-center text-gray-800 text-xs">
-                                                    {player.armor}
+                                            <div className="flex items-center mt-1">
+                                                <div className="w-20 bg-gray-700 h-3 rounded-sm mr-2">
+                                                    <div
+                                                        className={`h-3 rounded-sm ${player.health > 60 ? 'bg-green-500' :
+                                                            player.health > 20 ? 'bg-yellow-500' : 'bg-red-500'
+                                                            }`}
+                                                        style={{ width: `${player.health}%` }}
+                                                    />
+                                                </div>
+
+                                                {player.armor > 0 && (
+                                                    <div className="w-5 h-5 bg-gray-300 rounded-full flex items-center justify-center text-gray-800 text-xs">
+                                                        {player.armor}
+                                                    </div>
+                                                )}
+
+                                                <div className="ml-2 text-xs">
+                                                    {getWeaponName(player.weapon)}
+                                                </div>
+                                            </div>
+
+                                            {player.life_state !== 0 && (
+                                                <div className="absolute inset-0 bg-black bg-opacity-70 rounded-md flex items-center justify-center">
+                                                    <span className="text-red-500 font-bold text-lg">DEAD</span>
                                                 </div>
                                             )}
-
-                                            <div className="ml-2 text-xs">
-                                                {getWeaponName(player.weapon)}
-                                            </div>
                                         </div>
-
-                                        {player.life_state !== 0 && (
-                                            <div className="absolute inset-0 bg-black bg-opacity-70 rounded-md flex items-center justify-center">
-                                                <span className="text-red-500 font-bold text-lg">DEAD</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
-                        </div>
                         )}
                     </div>
                 </div >

@@ -8,8 +8,8 @@ standalone: c/cs.c c/process.c c/bridge.c
 libmunakas.so: c/cs.c c/process.c c/bridge.c
 	gcc -fPIC -shared -o libmunakas.so c/cs.c c/process.c c/bridge.c -I. -lm
 
-munakas: libmunakas.so main.go reader.go
-	go build -o munakas main.go reader.go
+munakas: libmunakas.so main.go reader.go parser.go
+	go build -o munakas main.go reader.go parser.go
 
 clean:
 	rm -f libmunakas.so munakas standalone
