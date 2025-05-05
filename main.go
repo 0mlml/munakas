@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -229,49 +226,7 @@ func handleMessages() {
 	}
 }
 
-func spawnReader(path string) {
-	process := exec.Command(path)
-	stdout, err := process.StdoutPipe()
-	if err != nil {
-		panic(err)
-	}
-	stderr, err := process.StderrPipe()
-	if err != nil {
-		panic(err)
-	}
-	err = process.Start()
-	if err != nil {
-		panic(err)
-	}
-
-	// stdout reader
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			output := scanner.Text()
-
-			if strings.HasPrefix(output, "PLAYERLIST:") {
-				playerListJSON := strings.TrimPrefix(output, "PLAYERLIST:")
-
-				broadcast <- playerListJSON
-			}
-		}
-	}()
-
-	// stderr reader
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			output := scanner.Text()
-			fmt.Println(output)
-		}
-	}()
-}
-
 func main() {
-	readerPath := flag.String("reader", "./reader", "Path to the reader executable")
-	flag.Parse()
-
 	fs := http.FileServer(http.Dir("./static"))
 	http.Handle("/", fs)
 
@@ -279,10 +234,13 @@ func main() {
 
 	go handleMessages()
 
-	go spawnReader(*readerPath)
+	err := InitializeReader()
+	if err != nil {
+		log.Fatal("Error initializing reader: ", err)
+	}
 
 	log.Println("Server starting at http://localhost:8080")
-	err := http.ListenAndServe(":8080", nil)
+	err = http.ListenAndServe(":8080", nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}

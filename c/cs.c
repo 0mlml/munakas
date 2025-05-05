@@ -68,13 +68,13 @@ bool init_offsets(ProcessHandle *handle, struct Offsets *offsets)
     return false;
   }
 
-  const uint8_t pattern[] = {0x48, 0x83, 0x3D, 0x00, 0x00, 0x00,
-                             0x00, 0x00, 0x0F, 0x95, 0xC0, 0xC3};
-  const bool mask[] = {true, true, true, false, false, false,
-                       false, false, true, true, true, true};
+  const uint8_t lp_pattern[] = {0x48, 0x83, 0x3D, 0x00, 0x00, 0x00,
+                                0x00, 0x00, 0x0F, 0x95, 0xC0, 0xC3};
+  const bool lp_mask[] = {true, true, true, false, false, false,
+                          false, false, true, true, true, true};
 
   uint64_t local_player_address;
-  if (!scan_pattern(handle, offsets->libraries.client, 12, pattern, mask,
+  if (!scan_pattern(handle, offsets->libraries.client, 12, lp_pattern, lp_mask,
                     &local_player_address))
   {
     errorm_print("Failed to get local player offset\n");
@@ -82,6 +82,19 @@ bool init_offsets(ProcessHandle *handle, struct Offsets *offsets)
   }
 
   debug_print("Local player address: 0x%lx\n", local_player_address);
+
+  // const uint8_t gv_pattern[] = {0x48, 0x89, 0x0D, 0x00, 0x00, 0x00, 0x00, 0x48, 0x89, 0x41};
+  // const bool gv_mask[] = {true, true, true, false, false, false, false, true, true, true};
+
+  // uint64_t global_vars_address;
+  // if (!scan_pattern(handle, offsets->libraries.client, 10, gv_pattern, gv_mask,
+  //                   &global_vars_address))
+  // {
+  //   errorm_print("Failed to get global vars offset\n");
+  //   return false;
+  // }
+
+  // debug_print("Global vars address: 0x%lx\n", global_vars_address);
 
   offsets->direct.local_player =
       get_rel_address(handle, local_player_address, 0x03, 0x08);

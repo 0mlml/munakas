@@ -1,10 +1,16 @@
 #include "cs.h"
+#include "bridge.h"
 #include "process.h"
 #include "config.h"
 
-#include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
 #include <unistd.h>
+
+static ProcessHandle g_handle;
+static struct Offsets g_offsets;
+static bool g_initialized = false;
 
 void jsonify_player(const struct Player *player, char *json, size_t size)
 {
@@ -38,56 +44,78 @@ void jsonify_player_list(const struct Player *players, size_t count, char *json,
   strncat(json, "]", size - strlen(json) - 1);
 }
 
-int main()
+bool init()
 {
-  while (true)
+  g_initialized = false;
+
+  uint64_t pid = get_pid(PROCESS_NAME);
+  if (pid == 0)
   {
-    const uint64_t pid = get_pid(PROCESS_NAME);
-    if (pid == 0)
-    {
-      errorm_print("Process not found\n");
-      sleep(1);
-      continue;
-    }
+    return false;
+  }
 
-    info_print("Found process with PID: %lu\n", pid);
-    ProcessHandle handle;
-    if (!open_process(&handle, pid))
-    {
-      errorm_print("Failed to open process\n");
-      sleep(1);
-      continue;
-    }
-    info_print("Opened process with PID: %lu\n", pid);
-    struct Offsets offsets;
-    if (!init_offsets(&handle, &offsets))
-    {
-      errorm_print("Failed to initialize offsets\n");
-      close(handle.memory);
-      sleep(1);
-      continue;
-    }
-    while (true)
-    {
-      if (!is_valid_pid(pid))
-      {
-        errorm_print("Process no longer exists\n");
-        break;
-      }
-      struct Player players[64];
-      int32_t player_count = get_player_list(&handle, &offsets, players, 64);
-      if (player_count < 0)
-      {
-        errorm_print("Failed to get player list\n");
-        break;
-      }
-      // info_print("Found %u players\n", player_count);
-      char json[8192];
-      jsonify_player_list(players, player_count, json, sizeof(json));
+  if (!open_process(&g_handle, pid))
+  {
+    return false;
+  }
 
-      output_print("PLAYERLIST:%s\n", json);
+  if (!init_offsets(&g_handle, &g_offsets))
+  {
+    close(g_handle.memory);
+    return false;
+  }
 
-      usleep(REFRESH_RATE * 1000);
+  g_initialized = true;
+  return true;
+}
+
+bool still_connected()
+{
+  if (!g_initialized)
+  {
+    return init();
+  }
+
+  uint64_t pid = get_pid(PROCESS_NAME);
+  if (pid == 0 || !is_valid_pid(pid))
+  {
+    if (g_initialized)
+    {
+      close(g_handle.memory);
     }
+    return init();
+  }
+
+  return true;
+}
+
+char *get_player_list_json()
+{
+  char *json = (char *)malloc(8192 * sizeof(char));
+
+  if (!still_connected())
+  {
+    snprintf(json, 8192, "[]");
+    return json;
+  }
+
+  struct Player players[64];
+  int32_t player_count = get_player_list(&g_handle, &g_offsets, players, 64);
+  if (player_count < 0)
+  {
+    snprintf(json, 8192, "[]");
+    return json;
+  }
+
+  jsonify_player_list(players, player_count, json, 8192);
+  return json;
+}
+
+void cleanup_game_connection()
+{
+  if (g_initialized)
+  {
+    close(g_handle.memory);
+    g_initialized = false;
   }
 }

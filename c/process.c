@@ -33,7 +33,7 @@ bool open_process(ProcessHandle *handle, pid_t pid)
   handle->memory = open(memory_path, O_RDONLY);
   if (!handle->memory)
   {
-    perror("Failed to open memory file");
+    errorm_print("Failed to open memory file");
     return false;
   }
   return true;
@@ -62,7 +62,7 @@ bool get_module_base_address(ProcessHandle *handle, const char *module_name,
   FILE *maps_file = fopen(maps_path, "r");
   if (!maps_file)
   {
-    perror("Failed to open maps file");
+    errorm_print("Failed to open maps file");
     return false;
   }
 
