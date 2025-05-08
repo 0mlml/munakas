@@ -6,9 +6,11 @@
 !*.c
 !*.h
 !static/*
+!*.jsx
 
 !README.md
 !run.sh
+!run_debug.sh
 !Makefile
 !LICENSE
 !.gitignore

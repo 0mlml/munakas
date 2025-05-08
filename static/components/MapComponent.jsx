@@ -14,6 +14,7 @@ const MapComponent = ({
     setSelectedPlayer,
     mapOnlyMode,
     availableSections,
+    bombState,
 }) => {
     React.useEffect(() => {
         if (!mapConfig || !mapConfig.verticalSections) {
@@ -133,7 +134,7 @@ const MapComponent = ({
         ctx.restore();
 
         playerData.forEach(player => {
-            if (player.life_state !== 0) return;
+            if (player.lifeState !== 0) return;
 
             const renderTranslucent = mapConfig.verticalSections && mapConfig.verticalSections[currentSection] &&
                 (player.position.z < mapConfig.verticalSections[currentSection].altitudeMin ||
@@ -150,6 +151,27 @@ const MapComponent = ({
                 default: ctx.fillStyle = `rgba(75, 85, 99, ${renderTranslucent ? 0.5 : 1})`; break
             }
 
+            ctx.fill();
+
+            const radius = window.innerWidth < 768 ? 12 : 20; // Distance from player center
+            const triangleSize = window.innerWidth < 768 ? 5 : 8; // Size of the triangle
+
+            const yawRadians = (-player.yaw * Math.PI) / 180;
+
+            const triTipX = position.x + Math.cos(yawRadians) * radius;
+            const triTipY = position.y + Math.sin(yawRadians) * radius;
+
+            const triBase1X = position.x + Math.cos(yawRadians + Math.PI * 0.8) * triangleSize;
+            const triBase1Y = position.y + Math.sin(yawRadians + Math.PI * 0.8) * triangleSize;
+
+            const triBase2X = position.x + Math.cos(yawRadians - Math.PI * 0.8) * triangleSize;
+            const triBase2Y = position.y + Math.sin(yawRadians - Math.PI * 0.8) * triangleSize;
+
+            ctx.beginPath();
+            ctx.moveTo(triTipX, triTipY);
+            ctx.lineTo(triBase1X, triBase1Y);
+            ctx.lineTo(triBase2X, triBase2Y);
+            ctx.closePath();
             ctx.fill();
 
             if (selectedPlayer && player.name === selectedPlayer.name) {
@@ -173,13 +195,20 @@ const MapComponent = ({
                 }
             }
 
+            if (player.hasBomb) {
+                ctx.fillStyle = 'red';
+                ctx.beginPath();
+                ctx.arc(position.x, position.y, window.innerWidth < 768 ? 2 : 4, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+
             ctx.font = '12px Arial';
             ctx.fillStyle = 'white';
             ctx.textAlign = 'center';
             ctx.fillText(player.name, position.x, position.y + 20);
         });
 
-    }, [playerData, mapImage, mapConfig, currentSection, canvasRef.current]);
+    }, [playerData, mapImage, mapConfig, currentSection, selectedPlayer]);
 
 
     React.useEffect(() => {
@@ -261,7 +290,7 @@ const MapComponent = ({
         let closestDistance = Infinity;
 
         playerData.forEach(player => {
-            if (player.life_state !== 0) return;
+            if (player.lifeState !== 0) return;
 
             if (mapConfig.verticalSections) {
                 const section = mapConfig.verticalSections[currentSection];
@@ -337,10 +366,7 @@ const MapComponent = ({
                             <span className="text-gray-400">Money:</span> ${selectedPlayer.money}
                         </div>
                         <div>
-                            <span className="text-gray-400">EQP value:</span> {selectedPlayer.freezetime_end_equipment_value}
-                        </div>
-                        <div>
-                            <span className="text-gray-400">Weapon:</span> {getWeaponName(selectedPlayer.weapon)}
+                            <span className="text-gray-400">Weapons:</span> {get(selectedPlayer.getWeapons())}
                         </div>
                         <div>
                             <span className="text-gray-400">X:</span> {selectedPlayer.position.x.toFixed(0)}
@@ -359,22 +385,13 @@ const MapComponent = ({
                         <div className="grid grid-cols-3 gap-2 text-sm">
                             <h3 className="font-semibold mb-1 flex items-center">
                                 <span className="w-2 h-2 rounded-full bg-yellow-600 mr-2"></span>
-                                {playerData.filter(player => player.team === 2 && player.life_state === 0).length} Terrorists
+                                {playerData.filter(player => player.team === 2 && player.lifeState === 0).length} Terrorists
                             </h3>
                             <h4>vs</h4>
                             <h3 className="font-semibold mb-1 flex items-center">
                                 <span className="w-2 h-2 rounded-full bg-blue-600 mr-2"></span>
-                                {playerData.filter(player => player.team === 3 && player.life_state === 0).length} Counter-Terrorists
+                                {playerData.filter(player => player.team === 3 && player.lifeState === 0).length} Counter-Terrorists
                             </h3>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2 text-sm">
-                            <div>
-                                <span className="text-yellow-600">T Unfreeze EQP value:</span> {playerData.map(p => p.team === 2 ? p.freezetime_end_equipment_value : 0).reduce((p, c) => p + c, 0)}
-                            </div><p></p>
-                            <div>
-                                <span className="text-blue-600">CT Unfreeze EQP value:</span> {playerData.map(p => p.team === 3 ? p.freezetime_end_equipment_value : 0).reduce((p, c) => p + c, 0)}
-                            </div>
                         </div>
                     </div>
                 )}

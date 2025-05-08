@@ -9,6 +9,7 @@ const UI = () => {
     const [connectionStatus, setConnectionStatus] = React.useState('connecting');
     const [mapImage, setMapImage] = React.useState(null);
     const [mapOnlyMode, setMapOnlyMode] = React.useState(false);
+    const [bombState, setBombState] = React.useState(null);
 
     const canvasRef = React.useRef(null);
     const canvasContainerRef = React.useRef(null);
@@ -41,16 +42,27 @@ const UI = () => {
                             return;
                         }
                         setAvailableMaps(message.maps);
-                        if (message.maps.length > 0) {
-                            if (!selectedMap) {
-                                setSelectedMap(message.maps[0].id);
-                                setMapConfig(message.maps[0]);
-                            }
-                        }
+                        const mapName = message.map_name || message.maps[0].id;
+                        setSelectedMap(mapName);
+                        setMapConfig(mapName);
                         return;
                     }
+
+                    if (message.type === "map_name") {
+                        console.log("Received map name:", message.map_name);
+                        setSelectedMap(prevSelectedMap => {
+                            return message.map_name;
+                        });
+                        return;
+                    }
+
                     if (message.type === "player_data") {
-                        setPlayerData(message.data);
+                        setPlayerData(message.data.map(player => new Player(player)));
+                        return;
+                    }
+
+                    if (message.type === "bomb_state") {
+                        setBombState(message.data);
                         return;
                     }
                     console.warn("Unknown message type:", message.type);
@@ -84,7 +96,6 @@ const UI = () => {
 
     React.useEffect(() => {
         if (!selectedMap || !availableMaps.length) return;
-
         const newConfig = availableMaps.find(m => m.id === selectedMap);
         if (newConfig) {
             setMapConfig(newConfig);
@@ -183,12 +194,12 @@ const UI = () => {
                                 >
                                     <div className="flex justify-between items-center select-none">
                                         <div className="font-bold flex items-center">
-                                            {player.active_player && <span className="mr-1">👁️</span>}
+                                            {player.isActive && <span className="mr-1">👁️</span>}
                                             {player.name}
                                             {!(!mapConfig.verticalSections ||
                                                 !mapConfig.verticalSections[currentSection] ||
                                                 (player.position.z >= mapConfig.verticalSections[currentSection].altitudeMin &&
-                                                    player.position.z < mapConfig.verticalSections[currentSection].altitudeMax)) && player.life_state === 0 &&
+                                                    player.position.z < mapConfig.verticalSections[currentSection].altitudeMax)) && player.lifeState === 0 &&
                                                 <span className="ml-1 text-xs">(different level)</span>
                                             }
                                         </div>
@@ -198,13 +209,13 @@ const UI = () => {
                                     </div>
 
                                     <div className="flex items-center mt-1">
-                                        <div className="w-20 bg-gray-700 h-3 rounded-sm mr-2">
+                                        <div className="w-20 bg-gray-700 h-4 rounded-sm mr-2">
                                             <div
-                                                className={`h-3 rounded-sm ${player.health > 60 ? 'bg-green-500' :
+                                                className={`text-xs align-middle h-4 rounded-sm ${player.health > 60 ? 'bg-green-500' :
                                                     player.health > 20 ? 'bg-yellow-500' : 'bg-red-500'
                                                     }`}
                                                 style={{ width: `${player.health}%` }}
-                                            />
+                                            >{player.health}</div>
                                         </div>
 
                                         {player.armor > 0 && (
@@ -214,11 +225,11 @@ const UI = () => {
                                         )}
 
                                         <div className="ml-2 text-xs select-none">
-                                            {getWeaponName(player.weapon)}
+                                            {player.getWeaponString()} {player.hasBomb && <span className="text-red-500">💣</span>}
                                         </div>
                                     </div>
 
-                                    {player.life_state !== 0 && (
+                                    {player.lifeState !== 0 && (
                                         <div className="absolute inset-0 bg-black bg-opacity-70 rounded-md flex items-center justify-center">
                                             <span className="text-red-500 font-bold text-lg">DEAD</span>
                                         </div>

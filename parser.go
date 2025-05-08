@@ -179,12 +179,36 @@ func formatMapName(mapID string) string {
 	return cases.Title(language.English).String(mapID)
 }
 
+func parseManifest(filePath string) ([]string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	var mapIDs []string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "//") {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		mapIDs = append(mapIDs, strings.TrimSpace(line))
+	}
+
+	return mapIDs, nil
+}
+
 func getAvailableMaps() ([]MapInfo, error) {
 	var maps []MapInfo
 	processedMapIDs := make(map[string]bool)
 
-	configFiles, err := filepath.Glob("static/cs2-radar-images/*.txt")
+	manifestFile := "static/cs2-radar-images/maps"
+	configFiles, err := parseManifest(manifestFile)
+
 	if err != nil {
+		log.Printf("Error reading manifest file: %v", err)
 		return nil, err
 	}
 
@@ -197,7 +221,7 @@ func getAvailableMaps() ([]MapInfo, error) {
 		}
 
 		pngPath := fmt.Sprintf("static/cs2-radar-images/%s.png", mapID)
-		if _, err := os.Stat(pngPath); os.IsNotExist(err) {
+		if _, err = os.Stat(pngPath); os.IsNotExist(err) {
 			log.Printf("Warning: Config file %s exists but no corresponding .png found", baseName)
 			continue
 		}

@@ -1,13 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-	"unicode/utf8"
 	"unsafe"
 )
 
@@ -24,7 +22,7 @@ func InitializeReader() error {
 	}
 	setupCleanupHandler()
 
-	go pollPlayerData()
+	go pollData()
 	return nil
 }
 
@@ -39,28 +37,9 @@ func setupCleanupHandler() {
 	}()
 }
 
-func sanitizeJSON(input string) string {
-	if !utf8.ValidString(input) {
-		validBytes := make([]byte, 0, len(input))
-		for i, c := range input {
-			if c == utf8.RuneError {
-				continue
-			}
-			validBytes = append(validBytes, input[i])
-		}
-		input = string(validBytes)
-	}
+var lastMapName string
 
-	var js json.RawMessage
-	if err := json.Unmarshal([]byte(input), &js); err != nil {
-		log.Printf("Invalid JSON from C function: %v", err)
-		return "[]"
-	}
-
-	return input
-}
-
-func pollPlayerData() {
+func pollData() {
 	refreshRate := 30
 
 	for {
@@ -70,12 +49,32 @@ func pollPlayerData() {
 		C.free(unsafe.Pointer(cJson))
 
 		if goJson != "[]" {
-			sanitizedJson := sanitizeJSON(goJson)
-			if sanitizedJson != "[]" {
-				broadcast <- sanitizedJson
-			}
+			broadcast <- `{"type":"player_data","data":` + goJson + `}`
+		}
+
+		// cJson = C.get_bomb_state_json()
+		// goJson = C.GoString(cJson)
+
+		// C.free(unsafe.Pointer(cJson))
+
+		// if goJson != "{}" {
+		// 	broadcast <- `{"type":"bomb_state","data":` + goJson + `}`
+		// }
+
+		if lastMapName != getMapName() {
+			lastMapName = getMapName()
+			broadcast <- `{"type":"map_name","map_name":"` + lastMapName + `"}`
+			log.Printf("Map changed to: %s", lastMapName)
 		}
 
 		time.Sleep(time.Duration(refreshRate) * time.Millisecond)
 	}
+}
+
+func getMapName() string {
+	cMapName := C.get_map_name_string()
+	goMapName := C.GoString(cMapName)
+	C.free(unsafe.Pointer(cMapName))
+
+	return goMapName
 }

@@ -12,4 +12,6 @@ void jsonify_player_list(const struct Player *players, size_t count, char *json,
 bool init();
 bool still_connected();
 char *get_player_list_json();
+char *get_bomb_state_json();
+char *get_map_name_string();
 void cleanup_game_connection();

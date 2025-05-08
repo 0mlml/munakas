@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
 )
@@ -32,8 +33,9 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error getting maps: %v", err)
 	} else {
 		mapsJSON, _ := json.Marshal(map[string]interface{}{
-			"type": "maps_list",
-			"maps": maps,
+			"type":     "maps_list",
+			"maps":     maps,
+			"map_name": getMapName(),
 		})
 		ws.WriteMessage(websocket.TextMessage, mapsJSON)
 	}
@@ -47,11 +49,32 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func sanitizeJSON(input string) string {
+	if !utf8.ValidString(input) {
+		validBytes := make([]byte, 0, len(input))
+		for i, c := range input {
+			if c == utf8.RuneError {
+				continue
+			}
+			validBytes = append(validBytes, input[i])
+		}
+		input = string(validBytes)
+	}
+
+	var js json.RawMessage
+	if err := json.Unmarshal([]byte(input), &js); err != nil {
+		log.Printf("Invalid JSON from C function: %v", err)
+		return "{}"
+	}
+
+	return input
+}
+
 func handleMessages() {
 	for {
 		msg := <-broadcast
 
-		msg = `{"type":"player_data","data":` + msg + `}`
+		msg = sanitizeJSON(msg)
 
 		for client := range clients {
 			err := client.WriteMessage(websocket.TextMessage, []byte(msg))

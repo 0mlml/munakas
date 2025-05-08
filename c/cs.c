@@ -13,13 +13,14 @@ bool have_all_offsets(const struct Offsets *offsets)
          offsets->player_controller.money_services && offsets->pawn.health &&
          offsets->pawn.armor && offsets->pawn.team &&
          offsets->pawn.life_state && offsets->pawn.weapon &&
+         offsets->pawn.eye_angles && offsets->pawn.item_services &&
          offsets->pawn.bullet_services && offsets->pawn.weapon_services &&
          offsets->pawn.position && offsets->pawn.observer_services &&
-         offsets->pawn.freezetime_end_equipment_value &&
          offsets->money_services.money && offsets->bullet_services.total_hits &&
          offsets->weapon_services.my_weapons &&
          offsets->weapon_services.active_weapon &&
-         offsets->observer_services.target;
+         offsets->observer_services.target &&
+         offsets->item_services.has_defuser;
 }
 
 bool init_offsets(ProcessHandle *handle, struct Offsets *offsets)
@@ -52,13 +53,23 @@ bool init_offsets(ProcessHandle *handle, struct Offsets *offsets)
     return false;
   }
 
+  uint64_t matchmaking_base_address;
+  if (!get_module_base_address(handle, MATCHMAKING_LIB,
+                               &matchmaking_base_address))
+  {
+    errorm_print("Failed to get matchmaking base address\n");
+    return false;
+  }
+
   offsets->libraries.client = client_base_address;
   offsets->libraries.engine = engine_base_address;
   offsets->libraries.tier0 = tier0_base_address;
+  offsets->libraries.matchmaking = matchmaking_base_address;
 
   debug_print("Client base address: 0x%lx\n", client_base_address);
   debug_print("Engine base address: 0x%lx\n", engine_base_address);
   debug_print("Tier0 base address: 0x%lx\n", tier0_base_address);
+  debug_print("Matchmaking base address: 0x%lx\n", matchmaking_base_address);
 
   if (!get_interface_offset(handle, offsets->libraries.engine,
                             "GameResourceServiceClientV0",
@@ -67,6 +78,22 @@ bool init_offsets(ProcessHandle *handle, struct Offsets *offsets)
     errorm_print("Failed to get resource offset\n");
     return false;
   }
+
+  const uint8_t pc_pattern[] = {0x00, 0x00, 0x00, 0x00, 0x8B, 0x10, 0x85, 0xD2, 0x0F, 0x8F};
+  const bool pc_mask[] = {false, false, false, false, true, true, true, true, true, true};
+
+  uint64_t planted_c4_address;
+  if (!scan_pattern(handle, offsets->libraries.client, 10, pc_pattern, pc_mask,
+                    &planted_c4_address))
+  {
+    errorm_print("Failed to get planted c4 offset\n");
+    return false;
+  }
+
+  debug_print("Planted c4 address: 0x%lx\n", planted_c4_address);
+
+  offsets->direct.planted_c4 =
+      get_rel_address(handle, planted_c4_address, 0x00, 0x07);
 
   const uint8_t lp_pattern[] = {0x48, 0x83, 0x3D, 0x00, 0x00, 0x00,
                                 0x00, 0x00, 0x0F, 0x95, 0xC0, 0xC3};
@@ -83,25 +110,30 @@ bool init_offsets(ProcessHandle *handle, struct Offsets *offsets)
 
   debug_print("Local player address: 0x%lx\n", local_player_address);
 
-  // const uint8_t gv_pattern[] = {0x48, 0x89, 0x0D, 0x00, 0x00, 0x00, 0x00, 0x48, 0x89, 0x41};
-  // const bool gv_mask[] = {true, true, true, false, false, false, false, true, true, true};
-
-  // uint64_t global_vars_address;
-  // if (!scan_pattern(handle, offsets->libraries.client, 10, gv_pattern, gv_mask,
-  //                   &global_vars_address))
-  // {
-  //   errorm_print("Failed to get global vars offset\n");
-  //   return false;
-  // }
-
-  // debug_print("Global vars address: 0x%lx\n", global_vars_address);
-
   offsets->direct.local_player =
       get_rel_address(handle, local_player_address, 0x03, 0x08);
 
   const uint64_t player_address = offsets->interfaces.resource + ENTITY_OFFSET;
   offsets->interfaces.entity = read_u64(handle, player_address);
   offsets->interfaces.player = offsets->interfaces.entity + 0x10;
+
+  const uint8_t gt_pattern[] = {0x48, 0x8D, 0x05, 0x00, 0x00, 0x00, 0x00, 0xC3, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00,
+                                0x00, 0x48, 0x8B, 0x07};
+  const bool gt_mask[] = {true, true, true, false, false, false, false, true, true, true,
+                          true, false, false, false, false, false, true, true, true};
+
+  uint64_t game_type_address;
+  if (!scan_pattern(handle, offsets->libraries.matchmaking, 19, gt_pattern, gt_mask,
+                    &game_type_address))
+  {
+    errorm_print("Failed to get game type offset\n");
+    return false;
+  }
+
+  debug_print("Game type address: 0x%lx\n", game_type_address);
+
+  offsets->direct.game_types =
+      get_rel_address(handle, game_type_address, 0x03, 0x07);
 
   if (!get_interface_offset(handle, offsets->libraries.tier0, "VEngineCvar0",
                             &offsets->interfaces.convar))
@@ -331,6 +363,24 @@ bool init_offsets(ProcessHandle *handle, struct Offsets *offsets)
       const int32_t offset = *(int32_t *)(entry + 0x08);
       offsets->bullet_services.total_hits = offset;
     }
+    else if (strcmp(name, "m_angEyeAngles") == 0)
+    {
+      if (offsets->pawn.eye_angles != 0)
+      {
+        continue;
+      }
+      const int32_t offset = *(int32_t *)(entry + 0x10);
+      offsets->pawn.eye_angles = offset;
+    }
+    else if (strcmp(name, "m_pItemServices") == 0)
+    {
+      if (offsets->pawn.item_services != 0)
+      {
+        continue;
+      }
+      const int32_t offset = *(int32_t *)(entry + 0x08);
+      offsets->pawn.item_services = offset;
+    }
     else if (strcmp(name, "m_hMyWeapons") == 0)
     {
       if (offsets->weapon_services.my_weapons != 0)
@@ -358,14 +408,68 @@ bool init_offsets(ProcessHandle *handle, struct Offsets *offsets)
       const int32_t offset = *(int32_t *)(entry + 0x08);
       offsets->observer_services.target = offset;
     }
-    else if (strcmp(name, "m_unFreezetimeEndEquipmentValue") == 0)
+    else if (strcmp(name, "m_bHasDefuser") == 0)
     {
-      if (!network_enable || offsets->pawn.freezetime_end_equipment_value != 0)
+      if (offsets->item_services.has_defuser != 0)
       {
         continue;
       }
-      const int32_t offset = *(int32_t *)(entry + 0x08 + 0x10);
-      offsets->pawn.freezetime_end_equipment_value = offset;
+      const int32_t offset = *(int32_t *)(entry + 0x10);
+      offsets->item_services.has_defuser = offset;
+    }
+    else if (strcmp(name, "m_bC4Activated"))
+    {
+      if (offsets->planted_c4.is_activated != 0)
+      {
+        continue;
+      }
+      const int32_t offset = *(int32_t *)(entry + 0x10);
+      offsets->planted_c4.is_activated = offset;
+    }
+    else if (strcmp(name, "m_bBombTicking") == 0)
+    {
+      if (offsets->planted_c4.is_ticking != 0)
+      {
+        continue;
+      }
+      const int32_t offset = *(int32_t *)(entry + 0x10);
+      offsets->planted_c4.is_ticking = offset;
+    }
+    else if (strcmp(name, "m_flC4Blow") == 0)
+    {
+      if (offsets->planted_c4.blow_time != 0)
+      {
+        continue;
+      }
+      const int32_t offset = *(int32_t *)(entry + 0x10);
+      offsets->planted_c4.blow_time = offset;
+    }
+    else if (strcmp(name, "m_nBombSite") == 0)
+    {
+      if (offsets->planted_c4.bomb_site != 0)
+      {
+        continue;
+      }
+      const int32_t offset = *(int32_t *)(entry + 0x18);
+      offsets->planted_c4.bomb_site = offset;
+    }
+    else if (strcmp(name, "m_bBeingDefused") == 0)
+    {
+      if (offsets->planted_c4.being_defused != 0)
+      {
+        continue;
+      }
+      const int32_t offset = *(int32_t *)(entry + 0x18);
+      offsets->planted_c4.being_defused = offset;
+    }
+    else if (strcmp(name, "m_flDefuseCountDown") == 0)
+    {
+      if (offsets->planted_c4.defuse_time != 0)
+      {
+        continue;
+      }
+      const int32_t offset = *(int32_t *)(entry + 0x10);
+      offsets->planted_c4.defuse_time = offset;
     }
 
     if (have_all_offsets(offsets))
@@ -510,6 +614,37 @@ char *get_weapon(ProcessHandle *handle, const struct Offsets *offsets,
   return get_weapon_name(handle, weapon_entity_instance);
 }
 
+int get_weapons(ProcessHandle *handle, const struct Offsets *offsets,
+                char *weapons[], int max_weapons, uint64_t pawn)
+{
+  const uint64_t weapon_service = read_u64(handle, pawn + offsets->pawn.weapon_services);
+  if (weapon_service == 0)
+  {
+    return 0;
+  }
+  const uint64_t length = read_u64(handle, weapon_service + offsets->weapon_services.my_weapons);
+  const uint64_t weapon_list = read_u64(handle, weapon_service + offsets->weapon_services.my_weapons + 0x08);
+
+  int weapon_count = 0;
+  for (int i = 0; i < length && weapon_count < max_weapons; i++)
+  {
+    const uint64_t index = read_u32(handle, weapon_list + 0x04 * i) & 0xFFF;
+    uint64_t weapon_entity_instance;
+    if (!get_client_entity(handle, offsets, index, &weapon_entity_instance))
+    {
+      continue;
+    }
+    char *weapon_name = get_weapon_name(handle, weapon_entity_instance);
+    if (weapon_name == NULL)
+    {
+      continue;
+    }
+
+    weapons[weapon_count++] = weapon_name;
+  }
+  return weapon_count;
+}
+
 int32_t get_total_hits(ProcessHandle *handle, const struct Offsets *offsets,
                        uint64_t pawn)
 {
@@ -539,6 +674,40 @@ struct v3 get_position(ProcessHandle *handle, const struct Offsets *offsets,
   return vec;
 }
 
+struct v3 get_eye_angles(ProcessHandle *handle, const struct Offsets *offsets,
+                         uint64_t pawn)
+{
+  const uint64_t eye_angles = pawn + offsets->pawn.eye_angles;
+  struct v3 vec = {read_f32(handle, eye_angles),
+                   read_f32(handle, eye_angles + 0x04),
+                   read_f32(handle, eye_angles + 0x08)};
+  return vec;
+}
+
+bool get_has_bomb(ProcessHandle *handle, char *weapons[], int weapon_count)
+{
+  for (int i = 0; i < weapon_count; i++)
+  {
+    if (weapons[i] && strstr(weapons[i], "c4") != NULL)
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool get_has_defuser(ProcessHandle *handle, const struct Offsets *offsets,
+                     uint64_t pawn)
+{
+  const uint64_t item_services =
+      read_u64(handle, pawn + offsets->pawn.item_services);
+  if (item_services == 0)
+  {
+    return false;
+  }
+  return read_u8(handle, item_services + offsets->item_services.has_defuser) != 0;
+}
+
 uint64_t get_spectator_target(ProcessHandle *handle,
                               const struct Offsets *offsets, uint64_t pawn)
 {
@@ -565,11 +734,6 @@ uint64_t get_spectator_target(ProcessHandle *handle,
   }
 
   return read_u64(handle, v2 + 120 * (target & 0x1FF));
-}
-
-uint16_t get_freezetime_end_equipment_value(ProcessHandle *handle, const struct Offsets *offsets, uint64_t pawn)
-{
-  return read_u16(handle, pawn + offsets->pawn.freezetime_end_equipment_value);
 }
 
 bool is_ffa(ProcessHandle *handle, const struct Offsets *offsets)
@@ -602,7 +766,6 @@ struct Player get_player_info(ProcessHandle *handle,
   player.money = get_money(handle, offsets, controller);
   player.team = get_team(handle, offsets, pawn);
   player.life_state = get_life_state(handle, offsets, pawn);
-  player.freezetime_end_equipment_value = get_freezetime_end_equipment_value(handle, offsets, pawn);
 
   char *weapon_ptr = get_weapon(handle, offsets, pawn);
   if (weapon_ptr)
@@ -611,11 +774,56 @@ struct Player get_player_info(ProcessHandle *handle,
     free(weapon_ptr);
   }
 
+  char *weapons[10] = {0};
+  int weapon_count = get_weapons(handle, offsets, weapons, 10, pawn);
+  for (int i = 0; i < weapon_count; i++)
+  {
+    if (weapons[i])
+    {
+      player.weapons[i] = weapons[i];
+    }
+  }
+  player.has_bomb = get_has_bomb(handle, player.weapons, weapon_count);
+  player.has_defuser = get_has_defuser(handle, offsets, pawn);
+
   player.color = get_color(handle, offsets, controller);
   player.position = get_position(handle, offsets, pawn);
+  player.eye_angles = get_eye_angles(handle, offsets, pawn);
   player.active_player = false;
 
   return player;
+}
+
+char *get_map_name(ProcessHandle *handle, const struct Offsets *offsets)
+{
+  const uint64_t map_name_pointer = read_u64(handle, offsets->direct.game_types + 0x120);
+  const char *map_name = read_string(handle, map_name_pointer);
+  if (map_name == NULL || strlen(map_name) < 5)
+  {
+    return strdup("unknown");
+  }
+  return strdup(map_name + 4);
+}
+
+bool get_bomb_state(ProcessHandle *handle, const struct Offsets *offsets,
+                    struct Bomb *bomb)
+{
+  const uint64_t c4_handle = read_u64(handle, offsets->direct.planted_c4);
+  if (c4_handle == 0)
+  {
+    return false;
+  }
+  const uint64_t planted_c4 = read_u64(handle, c4_handle);
+
+  bomb->entity = planted_c4;
+  bomb->position = get_position(handle, offsets, planted_c4);
+  bomb->is_planted = read_u8(handle, planted_c4 + offsets->planted_c4.is_activated) != 0;
+  bomb->blow_time = read_f32(handle, planted_c4 + offsets->planted_c4.blow_time);
+  bomb->is_being_defused = read_u8(handle, planted_c4 + offsets->planted_c4.being_defused) != 0;
+  bomb->defuse_time = read_f32(handle, planted_c4 + offsets->planted_c4.defuse_time);
+  bomb->bomb_site = read_u8(handle, planted_c4 + offsets->planted_c4.bomb_site);
+
+  return true;
 }
 
 int get_player_list(ProcessHandle *handle, const struct Offsets *offsets,
