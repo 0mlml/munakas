@@ -182,6 +182,10 @@ class Player {
         return (primary ? getWeaponName(primary) + (secondary ? " / " : "") : "") +
             (secondary ? getWeaponName(secondary) : "");
     }
+
+    getWeapons() {
+        return this.weapons.map(getWeaponName).join(", ");
+    }
 }
 
 window.Player = Player;

@@ -153,6 +153,27 @@ const MapComponent = ({
 
             ctx.fill();
 
+            if (selectedPlayer && player.name === selectedPlayer.name) {
+
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                let newSection = null;
+                let highestMinimum = -Infinity;
+                if (mapConfig.verticalSections) Object.entries(mapConfig.verticalSections).forEach(([sectionName, sectionConfig]) => {
+                    if (player.position.z >= sectionConfig.altitudeMin &&
+                        player.position.z < sectionConfig.altitudeMax &&
+                        sectionConfig.altitudeMin > highestMinimum) {
+                        newSection = sectionName;
+                        highestMinimum = sectionConfig.altitudeMin;
+                    }
+                });
+
+                if (newSection && newSection !== currentSection) {
+                    setCurrentSection(newSection);
+                }
+            }
+
             const radius = window.innerWidth < 768 ? 12 : 20; // Distance from player center
             const triangleSize = window.innerWidth < 768 ? 5 : 8; // Size of the triangle
 
@@ -173,27 +194,6 @@ const MapComponent = ({
             ctx.lineTo(triBase2X, triBase2Y);
             ctx.closePath();
             ctx.fill();
-
-            if (selectedPlayer && player.name === selectedPlayer.name) {
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-
-                let newSection = null;
-                let highestMinimum = -Infinity;
-                if (mapConfig.verticalSections) Object.entries(mapConfig.verticalSections).forEach(([sectionName, sectionConfig]) => {
-                    if (player.position.z >= sectionConfig.altitudeMin &&
-                        player.position.z < sectionConfig.altitudeMax &&
-                        sectionConfig.altitudeMin > highestMinimum) {
-                        newSection = sectionName;
-                        highestMinimum = sectionConfig.altitudeMin;
-                    }
-                });
-
-                if (newSection && newSection !== currentSection) {
-                    setCurrentSection(newSection);
-                }
-            }
 
             if (player.hasBomb) {
                 ctx.fillStyle = 'red';
@@ -366,7 +366,7 @@ const MapComponent = ({
                             <span className="text-gray-400">Money:</span> ${selectedPlayer.money}
                         </div>
                         <div>
-                            <span className="text-gray-400">Weapons:</span> {get(selectedPlayer.getWeapons())}
+                            <span className="text-gray-400">Weapons:</span> {selectedPlayer.getWeapons()}
                         </div>
                         <div>
                             <span className="text-gray-400">X:</span> {selectedPlayer.position.x.toFixed(0)}

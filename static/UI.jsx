@@ -103,7 +103,7 @@ const UI = () => {
     }, [selectedMap, availableMaps]);
 
     const handlePlayerClick = (player) => {
-        if (player === selectedPlayer) {
+        if (selectedPlayer && player.name === selectedPlayer.name) {
             setSelectedPlayer(null);
             return;
         }
@@ -211,7 +211,7 @@ const UI = () => {
                                     <div className="flex items-center mt-1">
                                         <div className="w-20 bg-gray-700 h-4 rounded-sm mr-2">
                                             <div
-                                                className={`text-xs align-middle h-4 rounded-sm ${player.health > 60 ? 'bg-green-500' :
+                                                className={`text-xs select-none align-middle h-4 rounded-sm ${player.health > 60 ? 'bg-green-500' :
                                                     player.health > 20 ? 'bg-yellow-500' : 'bg-red-500'
                                                     }`}
                                                 style={{ width: `${player.health}%` }}
