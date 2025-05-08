@@ -89,13 +89,14 @@ bool still_connected()
   return true;
 }
 
+#define JSON_BUFFER_SIZE 8192
 char *get_player_list_json()
 {
-  char *json = (char *)malloc(8192 * sizeof(char));
+  char *json = (char *)malloc(JSON_BUFFER_SIZE * sizeof(char));
 
   if (!still_connected())
   {
-    snprintf(json, 8192, "[]");
+    snprintf(json, JSON_BUFFER_SIZE, "[]");
     return json;
   }
 
@@ -103,11 +104,11 @@ char *get_player_list_json()
   int32_t player_count = get_player_list(&g_handle, &g_offsets, players, 64);
   if (player_count < 0)
   {
-    snprintf(json, 8192, "[]");
+    snprintf(json, JSON_BUFFER_SIZE, "[]");
     return json;
   }
 
-  jsonify_player_list(players, player_count, json, 8192);
+  jsonify_player_list(players, player_count, json, JSON_BUFFER_SIZE);
   return json;
 }
 

@@ -20,7 +20,8 @@ var broadcast = make(chan string)
 func handleConnections(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error upgrading connection: %v", err)
+		return
 	}
 	defer ws.Close()
 

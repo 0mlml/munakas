@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -17,6 +19,9 @@ import (
 import "C"
 
 func InitializeReader() error {
+	if !C.init() {
+		panic("Failed to initialize")
+	}
 	setupCleanupHandler()
 
 	go pollPlayerData()
@@ -34,6 +39,27 @@ func setupCleanupHandler() {
 	}()
 }
 
+func sanitizeJSON(input string) string {
+	if !utf8.ValidString(input) {
+		validBytes := make([]byte, 0, len(input))
+		for i, c := range input {
+			if c == utf8.RuneError {
+				continue
+			}
+			validBytes = append(validBytes, input[i])
+		}
+		input = string(validBytes)
+	}
+
+	var js json.RawMessage
+	if err := json.Unmarshal([]byte(input), &js); err != nil {
+		log.Printf("Invalid JSON from C function: %v", err)
+		return "[]"
+	}
+
+	return input
+}
+
 func pollPlayerData() {
 	refreshRate := 30
 
@@ -44,7 +70,10 @@ func pollPlayerData() {
 		C.free(unsafe.Pointer(cJson))
 
 		if goJson != "[]" {
-			broadcast <- goJson
+			sanitizedJson := sanitizeJSON(goJson)
+			if sanitizedJson != "[]" {
+				broadcast <- sanitizedJson
+			}
 		}
 
 		time.Sleep(time.Duration(refreshRate) * time.Millisecond)
